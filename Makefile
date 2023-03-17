@@ -1,4 +1,4 @@
-# include à modifier selon sa configuration
+#include à modifier selon sa configuration
 #include make_msys.inc 
 include make_linux.inc
 

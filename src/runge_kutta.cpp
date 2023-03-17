@@ -41,6 +41,11 @@ Numeric::solve_RK4_movable_vortices( double dt, CartesianGridOfSpeed& t_velocity
 
     Geometry::CloudOfPoints newCloud(t_points.numberOfPoints());
     // On ne bouge que les points :
+
+    //---------------First Loop----------------
+    auto start = std::chrono::system_clock::now();
+
+    //#pragma omp parallel for 
     for ( std::size_t iPoint=0; iPoint<t_points.numberOfPoints(); ++iPoint)
     {
         point  p = t_points[iPoint];
@@ -56,8 +61,17 @@ Numeric::solve_RK4_movable_vortices( double dt, CartesianGridOfSpeed& t_velocity
         vector v4 = t_velocity.computeVelocityFor(p3);
         newCloud[iPoint] = t_velocity.updatePosition(p + onesixth*dt*(v1+2.*v2+2.*v3+v4));
     }
+    auto end = std::chrono::system_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+    std::cout << "time spent in the 1st loop: " << duration.count() << std::endl;
+
+    //---------------Second Loop----------------
     std::vector<point> newVortexCenter;
     newVortexCenter.reserve(t_vortices.numberOfVortices());
+
+    start = std::chrono::system_clock::now();
+
+    //#pragma omp parallel for 
     for (std::size_t iVortex=0; iVortex<t_vortices.numberOfVortices(); ++iVortex)
     {
         point p = t_vortices.getCenter(iVortex);
@@ -73,11 +87,26 @@ Numeric::solve_RK4_movable_vortices( double dt, CartesianGridOfSpeed& t_velocity
         vector v4 = t_vortices.computeSpeed(p3);
         newVortexCenter.emplace_back(t_velocity.updatePosition(p + onesixth*dt*(v1+2.*v2+2.*v3+v4)));
     }
+    
+    end = std::chrono::system_clock::now();
+    duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+    std::cout << "time spent in the 2nd loop: " << duration.count() << std::endl;
+    
+    //---------------Third Loop----------------
+
+    start = std::chrono::system_clock::now();
+
+    //#pragma omp parallel for
     for (std::size_t iVortex=0; iVortex<t_vortices.numberOfVortices(); ++iVortex)
     {
         t_vortices.setVortex(iVortex, newVortexCenter[iVortex], 
                              t_vortices.getIntensity(iVortex));
     }
+
+    end = std::chrono::system_clock::now();
+    duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+    std::cout << "time spent in the 3rd loop: " << duration.count() << std::endl << std::endl;
+
     t_velocity.updateVelocityField(t_vortices);
     return newCloud;
 
