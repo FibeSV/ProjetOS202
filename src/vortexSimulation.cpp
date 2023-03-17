@@ -12,7 +12,7 @@
 #include "cloud_of_points.hpp"
 #include "runge_kutta.hpp"
 #include "screen.hpp"
-
+#include <mpi.h>
 auto readConfigFile( std::ifstream& input )
 {
     using point=Simulation::Vortices::point;

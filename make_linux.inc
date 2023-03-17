@@ -9,4 +9,4 @@ CXXFLAGS2 = ${CXXFLAGS} -O2 -march=native -Wall -fopenmp
 CXXFLAGS += -O3 -march=native -Wall -fopenmp
 endif
 LIB=-lsfml-graphics -lsfml-window -lsfml-system -lmpi
-MPICXX = mpic++
+MPICXX = mpic++ 
