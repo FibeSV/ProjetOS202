@@ -98,6 +98,8 @@ int main( int nargs, char* argv[] )
     MPI_Comm_rank(global, &rank);
 
     std::cout << nbp << ' ' << rank << std::endl;
+    int interface_rank = 0;
+    int calculation_rank = 1;
     
     char const* filename;
     if (nargs==1)
@@ -142,7 +144,7 @@ int main( int nargs, char* argv[] )
         std::cout << "Press down cursor to halve the time step" << std::endl;
         std::cout << "Press up cursor to double the time step" << std::endl;
         Graphisme::Screen myScreen( {resx,resy}, {grid.getLeftBottomVertex(), grid.getRightTopVertex()} );
-        
+
         while (myScreen.isOpen()){
             auto start = std::chrono::system_clock::now();
             sf::Event event;
@@ -161,22 +163,23 @@ int main( int nargs, char* argv[] )
                 if (sf::Keyboard::isKeyPressed(sf::Keyboard::Up)) dt *= 2;
                 if (sf::Keyboard::isKeyPressed(sf::Keyboard::Down)) dt /= 2;
                 if (sf::Keyboard::isKeyPressed(sf::Keyboard::Right)) advance = true;
-                int bufPos = 0;
-                char tempBuf[ sizeof(animate)+sizeof(advance)+sizeof(dt) ];
-                MPI_Pack(&animate, 1, MPI_BYTE,   tempBuf, sizeof(tempBuf), &bufPos, MPI_COMM_WORLD );
-                MPI_Pack( &advance, 1, MPI_BYTE, tempBuf, sizeof(tempBuf), &bufPos, MPI_COMM_WORLD );
-                MPI_Pack( $dt, 1, MPI_DOUBLE,  tempBuf, sizeof(tempBuf), &bufPos, MPI_COMM_WORLD );
-                MPI_Send( tempBuf, bufPos, MPI_BYTE, targetRank, msgTag, MPI_COMM_WORLD );
-                // MPI_Bcast(&animate, 1, MPI_BYTE, 0, global);
-                // MPI_Bcast(&advance, 1, MPI_BYTE, 0, global);
-                // MPI_Bcast(&dt, 1, MPI_FLOAT, 0, global);
             }
-            std::cout << "hello"<<std::endl;
+
+            int bufPos = 0;
+            char tempBuf[ sizeof(animate)+sizeof(advance)+sizeof(dt)+sizeof(screen_open) ];
             MPI_Status status;
-            //std::vector<double>  m_coordinates(cloud.numberOfPoints());
+
+            MPI_Pack( &animate, 1, MPI_BYTE,   tempBuf, sizeof(tempBuf), &bufPos, MPI_COMM_WORLD );
+            MPI_Pack( &advance, 1, MPI_BYTE, tempBuf, sizeof(tempBuf), &bufPos, MPI_COMM_WORLD );
+            MPI_Pack( $dt, 1, MPI_DOUBLE,  tempBuf, sizeof(tempBuf), &bufPos, MPI_COMM_WORLD );
+            MPI_Pack( $screen_open, 1, MPI_BYTE,  tempBuf, sizeof(tempBuf), &bufPos, MPI_COMM_WORLD );
+            MPI_Send( tempBuf, bufPos, MPI_BYTE, targetRank, msgTag, MPI_COMM_WORLD );
+            std::cout << "hello"<<std::endl;
+
+
             MPI_Recv(cloud.data(), cloud.numberOfPoints(), MPI_FLOAT, 1, MPI_ANY_TAG, global, &status);
-            std::cout << cloud.data()[0] << std::endl;
-            //Geometry::CloudOfPoints cloud(m_coordinates);
+
+
             myScreen.clear(sf::Color::Black);
             std::string strDt = std::string("Time step : ") + std::to_string(dt);
             myScreen.drawText(strDt, Geometry::Point<double>{50, double(myScreen.getGeometry().second-96)});
@@ -188,8 +191,7 @@ int main( int nargs, char* argv[] )
             myScreen.drawText(str_fps, Geometry::Point<double>{300, double(myScreen.getGeometry().second-96)});
             myScreen.display();
         }
-        screen_open = myScreen.isOpen();
-        MPI_Bcast(&screen_open, 1, MPI_BYTE, 0, global);
+
 
     }
     
@@ -197,11 +199,7 @@ int main( int nargs, char* argv[] )
 
         while (screen_open)
         {
-            //     MPI_Bcast(&screen_open, 1, MPI_BYTE, 0, global);
-            // // on inspecte tous les évènements de la fenêtre qui ont été émis depuis la précédente itération
-            //     MPI_Bcast(&animate, 1, MPI_BYTE, 0, global);
-            //     MPI_Bcast(&advance, 1, MPI_BYTE, 0, global);
-            //     MPI_Bcast(&dt, 1, MPI_FLOAT, 0, global);
+                
                 if (animate | advance)
                 {
                     if (isMobile)
@@ -213,10 +211,17 @@ int main( int nargs, char* argv[] )
                         cloud = Numeric::solve_RK4_fixed_vortices(dt, grid, cloud);
                     }
                     std::cout << "sleep slepp" <<std::endl;
-                    MPI_Send(cloud.data(), cloud.numberOfPoints(), MPI_FLOAT, 1, tag, global);
+                    MPI_Send(cloud.data(), cloud.numberOfPoints(), MPI_FLOAT, interface_rank, tag, global);
 
                 }
-
+                
+                int bufPos = 0;
+                char tempBuf[ sizeof(animate)+sizeof(advance)+sizeof(dt)+sizeof(screen_open) ];
+                MPI_Status status;
+                MPI_Recv( tempBuf, sizeof(tempBuf), MPI_BYTE, sourceRank, msgTag, MPI_COMM_WORLD, &status );
+                MPI_Unpack( tempBuf, sizeof(tempBuf), &bufPos,&animate, 1, MPI_CHAR,  MPI_COMM_WORLD);
+                MPI_Unpack( tempBuf, sizeof(tempBuf), &bufPos, &advance, 1, MPI_CHAR,MPI_COMM_WORLD);
+                MPI_Unpack( tempBuf, sizeof(tempBuf), &bufPos, &dt , 1, MPI_DOUBLE, MPI_COMM_WORLD); 
         }
     }
     return EXIT_SUCCESS;
