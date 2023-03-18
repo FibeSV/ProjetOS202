@@ -102,6 +102,15 @@ int main( int nargs, char* argv[] )
     MPI_Comm_size(global, &nbp);
     MPI_Comm_rank(global, &rank);
 
+    MPI_Datatype MPI_Point;
+
+    int          len[3] = { 1, 1, 1 };
+    MPI_Aint     pos[3] = { offsetof(Geometry::Point<double>, x), offsetof(Geometry::Point<double>, y), sizeof(Geometry::Point<double>) };
+    MPI_Datatype typ[3] = { MPI_DOUBLE, MPI_DOUBLE, MPI_UB };
+
+    MPI_Type_struct( 3, len, pos, typ, &MPI_Point );
+    MPI_Type_commit( &MPI_Point );
+
     char const* filename;
     if (nargs==1)
     {
@@ -187,7 +196,7 @@ int main( int nargs, char* argv[] )
 
             std::cout << "int req" << std::endl;
             //RECEIVE CALCULATION RESULT
-            MPI_Recv(cloud.data(), cloud.numberOfPoints(), MPI_FLOAT, CALCULATION_RANK, CALCULATION_RESULT_TAG, global, new MPI_Status());
+            MPI_Recv(cloud.data(), cloud.numberOfPoints(), MPI_Point, CALCULATION_RANK, CALCULATION_RESULT_TAG, global, new MPI_Status());
             std::cout << "int received " << cloud.numberOfPoints() << std::endl;
         }
     }
@@ -201,7 +210,7 @@ int main( int nargs, char* argv[] )
             }
             std::cout << "calc send" << std::endl;
             //SEND CALCULATION RESULT
-            MPI_Send(cloud.data(), cloud.numberOfPoints(), MPI_BYTE, INTERFACE_RANK, CALCULATION_RESULT_TAG, global);
+            MPI_Send(cloud.data(), cloud.numberOfPoints(), MPI_Point, INTERFACE_RANK, CALCULATION_RESULT_TAG, global);
             std::cout << "calc req" << std::endl;
             //RECEIVE CALCULATION REQUEST
             MPI_Recv( &dt, 1, MPI_DOUBLE, INTERFACE_RANK, CALCULATION_REQUEST_TAG, global, new MPI_Status() );

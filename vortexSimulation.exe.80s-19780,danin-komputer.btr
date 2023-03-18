@@ -1,0 +1,8 @@
+
+vortexSimulation.exe:19780 terminated with signal 11 at PC=56297481ddd8 SP=7fff9d165038.  Backtrace:
+./vortexSimulation.exe(+0xadd8)[0x56297481ddd8]
+./vortexSimulation.exe(+0x9ef9)[0x56297481cef9]
+./vortexSimulation.exe(+0x644d)[0x56297481944d]
+/lib/x86_64-linux-gnu/libc.so.6(+0x29d90)[0x7fe8e5229d90]
+/lib/x86_64-linux-gnu/libc.so.6(__libc_start_main+0x80)[0x7fe8e5229e40]
+./vortexSimulation.exe(+0x7205)[0x56297481a205]
