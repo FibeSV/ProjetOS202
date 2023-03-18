@@ -104,11 +104,11 @@ int main( int nargs, char* argv[] )
 
     MPI_Datatype MPI_Point;
 
-    int          len[3] = { 1, 1, 1 };
-    MPI_Aint     pos[3] = { offsetof(Geometry::Point<double>, x), offsetof(Geometry::Point<double>, y), sizeof(Geometry::Point<double>) };
-    MPI_Datatype typ[3] = { MPI_DOUBLE, MPI_DOUBLE, MPI_UB };
+    int          len[2] = { 1, 1 };
+    MPI_Aint     pos[2] = { offsetof(Geometry::Point<double>, x), offsetof(Geometry::Point<double>, y)};
+    MPI_Datatype typ[2] = { MPI_DOUBLE, MPI_DOUBLE };
 
-    MPI_Type_struct( 3, len, pos, typ, &MPI_Point );
+    MPI_Type_create_struct( 2, len, pos, typ, &MPI_Point );
     MPI_Type_commit( &MPI_Point );
 
     char const* filename;
@@ -186,18 +186,13 @@ int main( int nargs, char* argv[] )
                     if (sf::Keyboard::isKeyPressed(sf::Keyboard::Down)) dt /= 2;
                     if (sf::Keyboard::isKeyPressed(sf::Keyboard::Right)) advance = true;
                 }
-                if (!animate && !advance && myScreen.isOpen())
-                    std::this_thread::sleep_for(std::chrono::milliseconds(200));
             } while (!animate && !advance && myScreen.isOpen());
 
-            std::cout << "int send" << std::endl;
             //SEND CALCULATION REQUEST
             MPI_Send(&dt, 1, MPI_DOUBLE, CALCULATION_RANK, CALCULATION_REQUEST_TAG, global);
 
-            std::cout << "int req" << std::endl;
             //RECEIVE CALCULATION RESULT
             MPI_Recv(cloud.data(), cloud.numberOfPoints(), MPI_Point, CALCULATION_RANK, CALCULATION_RESULT_TAG, global, new MPI_Status());
-            std::cout << "int received " << cloud.numberOfPoints() << std::endl;
         }
     }
     
@@ -208,13 +203,10 @@ int main( int nargs, char* argv[] )
             } else {
                 cloud = Numeric::solve_RK4_fixed_vortices(dt, grid, cloud);
             }
-            std::cout << "calc send" << std::endl;
             //SEND CALCULATION RESULT
             MPI_Send(cloud.data(), cloud.numberOfPoints(), MPI_Point, INTERFACE_RANK, CALCULATION_RESULT_TAG, global);
-            std::cout << "calc req" << std::endl;
             //RECEIVE CALCULATION REQUEST
             MPI_Recv( &dt, 1, MPI_DOUBLE, INTERFACE_RANK, CALCULATION_REQUEST_TAG, global, new MPI_Status() );
-            std::cout << "calc received " << dt << std::endl;
         } while (dt > 0);
     }
 
