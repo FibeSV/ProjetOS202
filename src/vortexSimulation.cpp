@@ -161,9 +161,15 @@ int main( int nargs, char* argv[] )
                 if (sf::Keyboard::isKeyPressed(sf::Keyboard::Up)) dt *= 2;
                 if (sf::Keyboard::isKeyPressed(sf::Keyboard::Down)) dt /= 2;
                 if (sf::Keyboard::isKeyPressed(sf::Keyboard::Right)) advance = true;
-                MPI_Bcast(&animate, 1, MPI_BYTE, 0, global);
-                MPI_Bcast(&advance, 1, MPI_BYTE, 0, global);
-                MPI_Bcast(&dt, 1, MPI_FLOAT, 0, global);
+                int bufPos = 0;
+                char tempBuf[ sizeof(animate)+sizeof(advance)+sizeof(dt) ];
+                MPI_Pack(&animate, 1, MPI_BYTE,   tempBuf, sizeof(tempBuf), &bufPos, MPI_COMM_WORLD );
+                MPI_Pack( &advance, 1, MPI_BYTE, tempBuf, sizeof(tempBuf), &bufPos, MPI_COMM_WORLD );
+                MPI_Pack( $dt, 1, MPI_DOUBLE,  tempBuf, sizeof(tempBuf), &bufPos, MPI_COMM_WORLD );
+                MPI_Send( tempBuf, bufPos, MPI_BYTE, targetRank, msgTag, MPI_COMM_WORLD );
+                // MPI_Bcast(&animate, 1, MPI_BYTE, 0, global);
+                // MPI_Bcast(&advance, 1, MPI_BYTE, 0, global);
+                // MPI_Bcast(&dt, 1, MPI_FLOAT, 0, global);
             }
             std::cout << "hello"<<std::endl;
             MPI_Status status;
