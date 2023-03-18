@@ -13,6 +13,10 @@
 #include "runge_kutta.hpp"
 #include "screen.hpp"
 #include <mpi.h>
+#define msgTag 10
+#define interface_rank 0
+#define calculation_rank 1
+
 auto readConfigFile( std::ifstream& input )
 {
     using point=Simulation::Vortices::point;
@@ -98,8 +102,7 @@ int main( int nargs, char* argv[] )
     MPI_Comm_rank(global, &rank);
 
     std::cout << nbp << ' ' << rank << std::endl;
-    int interface_rank = 0;
-    int calculation_rank = 1;
+
     
     char const* filename;
     if (nargs==1)
@@ -135,6 +138,7 @@ int main( int nargs, char* argv[] )
     
     int tag = 404;
     bool screen_open = true;
+    
 
     if (rank==0){
         std::cout << "######## Vortex simultor ########" << std::endl << std::endl;
@@ -171,13 +175,13 @@ int main( int nargs, char* argv[] )
 
             MPI_Pack( &animate, 1, MPI_BYTE,   tempBuf, sizeof(tempBuf), &bufPos, MPI_COMM_WORLD );
             MPI_Pack( &advance, 1, MPI_BYTE, tempBuf, sizeof(tempBuf), &bufPos, MPI_COMM_WORLD );
-            MPI_Pack( $dt, 1, MPI_DOUBLE,  tempBuf, sizeof(tempBuf), &bufPos, MPI_COMM_WORLD );
-            MPI_Pack( $screen_open, 1, MPI_BYTE,  tempBuf, sizeof(tempBuf), &bufPos, MPI_COMM_WORLD );
-            MPI_Send( tempBuf, bufPos, MPI_BYTE, targetRank, msgTag, MPI_COMM_WORLD );
+            MPI_Pack( &dt, 1, MPI_DOUBLE,  tempBuf, sizeof(tempBuf), &bufPos, MPI_COMM_WORLD );
+            MPI_Pack( &screen_open, 1, MPI_BYTE,  tempBuf, sizeof(tempBuf), &bufPos, MPI_COMM_WORLD );
+            MPI_Send( tempBuf, bufPos, MPI_BYTE, calculation_rank, msgTag, MPI_COMM_WORLD );
             std::cout << "hello"<<std::endl;
 
 
-            MPI_Recv(cloud.data(), cloud.numberOfPoints(), MPI_FLOAT, 1, MPI_ANY_TAG, global, &status);
+            MPI_Recv(cloud.data(), cloud.numberOfPoints(), MPI_FLOAT, 1, msgTag, global, &status);
 
 
             myScreen.clear(sf::Color::Black);
@@ -211,17 +215,17 @@ int main( int nargs, char* argv[] )
                         cloud = Numeric::solve_RK4_fixed_vortices(dt, grid, cloud);
                     }
                     std::cout << "sleep slepp" <<std::endl;
-                    MPI_Send(cloud.data(), cloud.numberOfPoints(), MPI_FLOAT, interface_rank, tag, global);
+                    MPI_Send(cloud.data(), cloud.numberOfPoints(), MPI_FLOAT, interface_rank, msgTag, global);
 
                 }
-                
                 int bufPos = 0;
                 char tempBuf[ sizeof(animate)+sizeof(advance)+sizeof(dt)+sizeof(screen_open) ];
                 MPI_Status status;
-                MPI_Recv( tempBuf, sizeof(tempBuf), MPI_BYTE, sourceRank, msgTag, MPI_COMM_WORLD, &status );
-                MPI_Unpack( tempBuf, sizeof(tempBuf), &bufPos,&animate, 1, MPI_CHAR,  MPI_COMM_WORLD);
-                MPI_Unpack( tempBuf, sizeof(tempBuf), &bufPos, &advance, 1, MPI_CHAR,MPI_COMM_WORLD);
+                MPI_Recv( tempBuf, sizeof(tempBuf), MPI_BYTE, interface_rank, msgTag, MPI_COMM_WORLD, &status );
+                MPI_Unpack( tempBuf, sizeof(tempBuf), &bufPos,&animate, 1, MPI_BYTE,  MPI_COMM_WORLD);
+                MPI_Unpack( tempBuf, sizeof(tempBuf), &bufPos, &advance, 1, MPI_BYTE, MPI_COMM_WORLD);
                 MPI_Unpack( tempBuf, sizeof(tempBuf), &bufPos, &dt , 1, MPI_DOUBLE, MPI_COMM_WORLD); 
+                MPI_Unpack( tempBuf, sizeof(tempBuf), &bufPos, &screen_open, 1, MPI_BYTE, MPI_COMM_WORLD);
         }
     }
     return EXIT_SUCCESS;
