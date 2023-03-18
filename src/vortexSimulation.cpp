@@ -140,6 +140,9 @@ int main( int nargs, char* argv[] )
     grid.updateVelocityField(vortices);
 
     double dt = 0.1;
+    double average_fps = 0;
+    int n = 0;
+
     if (rank == INTERFACE_RANK){
         std::cout << "######## Vortex simultor ########" << std::endl << std::endl;
         std::cout << "Press P for play animation " << std::endl;
@@ -192,19 +195,29 @@ int main( int nargs, char* argv[] )
             myScreen.displayParticles(grid, vortices, cloud);
             auto end = std::chrono::system_clock::now();
             std::chrono::duration<double> diff = end - start;
+            average_fps = (average_fps*n+1./diff.count())/(n+1);
+            n++;
             std::string str_fps = std::string("FPS : ") + std::to_string(1./diff.count());
             myScreen.drawText(str_fps, Geometry::Point<double>{300, double(myScreen.getGeometry().second-96)});
             myScreen.display();
         }
     }
-    
+
     if (rank == CALCULATION_RANK){
         do {
+            auto start = std::chrono::system_clock::now();
             if (isMobile) {
                 cloud = Numeric::solve_RK4_movable_vortices(dt, grid, vortices, cloud);
             } else {
                 cloud = Numeric::solve_RK4_fixed_vortices(dt, grid, cloud);
             }
+            //SEND CALCULATION RESULT
+            auto end = std::chrono::system_clock::now();
+            std::chrono::duration<double> diff = end - start;
+            average_fps = (average_fps*n+1./diff.count())/(n+1);
+            n++;
+            std::string str_fps = std::string("FPS : ") + std::to_string(average_fps);
+            std::cout << str_fps << std::endl;
             //SEND CALCULATION RESULT
 
             MPI_Send(cloud.data(), cloud.numberOfPoints(), MPI_Point, INTERFACE_RANK, CALCULATION_RESULT_TAG, global);
@@ -214,7 +227,7 @@ int main( int nargs, char* argv[] )
             MPI_Recv( &dt, 1, MPI_DOUBLE, INTERFACE_RANK, CALCULATION_REQUEST_TAG, global, new MPI_Status() );
         } while (dt > 0);
     }
-
+    std::cout << "rank="<< rank<<"average_fps=" << average_fps << std::endl;
     MPI_Finalize();
     return EXIT_SUCCESS;
 }

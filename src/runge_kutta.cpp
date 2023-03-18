@@ -1,6 +1,7 @@
 #include <iostream>
 #include "runge_kutta.hpp"
 #include "cartesian_grid_of_speed.hpp"
+#include <omp.h>
 using namespace Geometry;
 
 Geometry::CloudOfPoints
@@ -12,6 +13,9 @@ Numeric::solve_RK4_fixed_vortices( double dt, CartesianGridOfSpeed const& t_velo
 
     Geometry::CloudOfPoints newCloud(t_points.numberOfPoints());
     // On ne bouge que les points :
+    int max_threads = omp_get_max_threads(); // Get the maximum number of threads supported by the system
+    omp_set_num_threads(max_threads); // Set the number of threads to the maximum supported
+    #pragma omp parallel for // Directive OpenMP pour paralléliser la boucle
     for ( std::size_t iPoint=0; iPoint<t_points.numberOfPoints(); ++iPoint)
     {
         point  p = t_points[iPoint];
@@ -41,6 +45,10 @@ Numeric::solve_RK4_movable_vortices( double dt, CartesianGridOfSpeed& t_velocity
 
     Geometry::CloudOfPoints newCloud(t_points.numberOfPoints());
     // On ne bouge que les points :
+    int max_threads = omp_get_max_threads(); // Get the maximum number of threads supported by the system
+    omp_set_num_threads(max_threads); // Set the number of threads to the maximum supported
+
+    #pragma omp parallel for // Directive OpenMP pour paralléliser la boucle
     for ( std::size_t iPoint=0; iPoint<t_points.numberOfPoints(); ++iPoint)
     {
         point  p = t_points[iPoint];
