@@ -12,13 +12,15 @@
 #include "cloud_of_points.hpp"
 #include "runge_kutta.hpp"
 #include "screen.hpp"
+#include <thread>
 #include <mpi.h>
-#define msgTag 10
-#define interface_rank 0
-#define calculation_rank 1
 
-auto readConfigFile( std::ifstream& input )
-{
+int CALCULATION_RESULT_TAG = 888;
+int CALCULATION_REQUEST_TAG = 88;
+int INTERFACE_RANK = 0;
+int CALCULATION_RANK = 1;
+
+auto readConfigFile( std::ifstream& input ) {
     using point=Simulation::Vortices::point;
 
     int isMobile;
@@ -90,7 +92,6 @@ auto readConfigFile( std::ifstream& input )
     return std::make_tuple(vortices, isMobile, cartesianGrid, cloudOfPoints);
 }
 
-
 int main( int nargs, char* argv[] )
 {
     MPI_Comm global;
@@ -101,9 +102,6 @@ int main( int nargs, char* argv[] )
     MPI_Comm_size(global, &nbp);
     MPI_Comm_rank(global, &rank);
 
-    std::cout << nbp << ' ' << rank << std::endl;
-
-    
     char const* filename;
     if (nargs==1)
     {
@@ -131,58 +129,23 @@ int main( int nargs, char* argv[] )
     auto cloud    = std::get<3>(config);
     
     grid.updateVelocityField(vortices);
-    
-    bool animate=false;
-    double dt = 0.1;
-    bool advance = false;
-    
-    int tag = 404;
-    bool screen_open = true;
-    
 
-    if (rank==0){
+    double dt = 0.1;
+
+    if (rank == INTERFACE_RANK){
         std::cout << "######## Vortex simultor ########" << std::endl << std::endl;
         std::cout << "Press P for play animation " << std::endl;
         std::cout << "Press S to stop animation" << std::endl;
         std::cout << "Press right cursor to advance step by step in time" << std::endl;
         std::cout << "Press down cursor to halve the time step" << std::endl;
         std::cout << "Press up cursor to double the time step" << std::endl;
+        
         Graphisme::Screen myScreen( {resx,resy}, {grid.getLeftBottomVertex(), grid.getRightTopVertex()} );
+        bool animate = false;
 
         while (myScreen.isOpen()){
             auto start = std::chrono::system_clock::now();
-            sf::Event event;
-            while (myScreen.pollEvent(event))
-            {
-                // évènement "fermeture demandée" : on ferme la fenêtre
-                if (event.type == sf::Event::Closed)
-                    myScreen.close();
-                if (event.type == sf::Event::Resized)
-                {
-                    // on met à jour la vue, avec la nouvelle taille de la fenêtre
-                    myScreen.resize(event);
-                }
-                if (sf::Keyboard::isKeyPressed(sf::Keyboard::P)) animate = true;
-                if (sf::Keyboard::isKeyPressed(sf::Keyboard::S)) animate = false;
-                if (sf::Keyboard::isKeyPressed(sf::Keyboard::Up)) dt *= 2;
-                if (sf::Keyboard::isKeyPressed(sf::Keyboard::Down)) dt /= 2;
-                if (sf::Keyboard::isKeyPressed(sf::Keyboard::Right)) advance = true;
-            }
-
-            int bufPos = 0;
-            char tempBuf[ sizeof(animate)+sizeof(advance)+sizeof(dt)+sizeof(screen_open) ];
-            MPI_Status status;
-
-            MPI_Pack( &animate, 1, MPI_BYTE,   tempBuf, sizeof(tempBuf), &bufPos, MPI_COMM_WORLD );
-            MPI_Pack( &advance, 1, MPI_BYTE, tempBuf, sizeof(tempBuf), &bufPos, MPI_COMM_WORLD );
-            MPI_Pack( &dt, 1, MPI_DOUBLE,  tempBuf, sizeof(tempBuf), &bufPos, MPI_COMM_WORLD );
-            MPI_Pack( &screen_open, 1, MPI_BYTE,  tempBuf, sizeof(tempBuf), &bufPos, MPI_COMM_WORLD );
-            MPI_Send( tempBuf, bufPos, MPI_BYTE, calculation_rank, msgTag, MPI_COMM_WORLD );
-            std::cout << "hello"<<std::endl;
-
-
-            MPI_Recv(cloud.data(), cloud.numberOfPoints(), MPI_FLOAT, 1, msgTag, global, &status);
-
+            bool advance = false;
 
             myScreen.clear(sf::Color::Black);
             std::string strDt = std::string("Time step : ") + std::to_string(dt);
@@ -194,39 +157,58 @@ int main( int nargs, char* argv[] )
             std::string str_fps = std::string("FPS : ") + std::to_string(1./diff.count());
             myScreen.drawText(str_fps, Geometry::Point<double>{300, double(myScreen.getGeometry().second-96)});
             myScreen.display();
+
+            sf::Event event;
+            do {
+                while (myScreen.pollEvent(event)) {
+                    // évènement "fermeture demandée" : on ferme la fenêtre
+                    if (event.type == sf::Event::Closed) {
+                        myScreen.close();
+                        dt = 0;
+                    }
+                    if (event.type == sf::Event::Resized)
+                    {
+                        // on met à jour la vue, avec la nouvelle taille de la fenêtre
+                        myScreen.resize(event);
+                    }
+                    if (sf::Keyboard::isKeyPressed(sf::Keyboard::P)) animate = true;
+                    if (sf::Keyboard::isKeyPressed(sf::Keyboard::S)) animate = false;
+                    if (sf::Keyboard::isKeyPressed(sf::Keyboard::Up)) dt *= 2;
+                    if (sf::Keyboard::isKeyPressed(sf::Keyboard::Down)) dt /= 2;
+                    if (sf::Keyboard::isKeyPressed(sf::Keyboard::Right)) advance = true;
+                }
+                if (!animate && !advance && myScreen.isOpen())
+                    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            } while (!animate && !advance && myScreen.isOpen());
+
+            std::cout << "int send" << std::endl;
+            //SEND CALCULATION REQUEST
+            MPI_Send(&dt, 1, MPI_DOUBLE, CALCULATION_RANK, CALCULATION_REQUEST_TAG, global);
+
+            std::cout << "int req" << std::endl;
+            //RECEIVE CALCULATION RESULT
+            MPI_Recv(cloud.data(), cloud.numberOfPoints(), MPI_FLOAT, CALCULATION_RANK, CALCULATION_RESULT_TAG, global, new MPI_Status());
+            std::cout << "int received " << cloud.numberOfPoints() << std::endl;
         }
-
-
     }
     
-    if (rank==1){
-
-        while (screen_open)
-        {
-                
-                if (animate | advance)
-                {
-                    if (isMobile)
-                    {
-                        cloud = Numeric::solve_RK4_movable_vortices(dt, grid, vortices, cloud);
-                    }
-                    else
-                    {
-                        cloud = Numeric::solve_RK4_fixed_vortices(dt, grid, cloud);
-                    }
-                    std::cout << "sleep slepp" <<std::endl;
-                    MPI_Send(cloud.data(), cloud.numberOfPoints(), MPI_FLOAT, interface_rank, msgTag, global);
-
-                }
-                int bufPos = 0;
-                char tempBuf[ sizeof(animate)+sizeof(advance)+sizeof(dt)+sizeof(screen_open) ];
-                MPI_Status status;
-                MPI_Recv( tempBuf, sizeof(tempBuf), MPI_BYTE, interface_rank, msgTag, MPI_COMM_WORLD, &status );
-                MPI_Unpack( tempBuf, sizeof(tempBuf), &bufPos,&animate, 1, MPI_BYTE,  MPI_COMM_WORLD);
-                MPI_Unpack( tempBuf, sizeof(tempBuf), &bufPos, &advance, 1, MPI_BYTE, MPI_COMM_WORLD);
-                MPI_Unpack( tempBuf, sizeof(tempBuf), &bufPos, &dt , 1, MPI_DOUBLE, MPI_COMM_WORLD); 
-                MPI_Unpack( tempBuf, sizeof(tempBuf), &bufPos, &screen_open, 1, MPI_BYTE, MPI_COMM_WORLD);
-        }
+    if (rank == CALCULATION_RANK){
+        do {
+            if (isMobile) {
+                cloud = Numeric::solve_RK4_movable_vortices(dt, grid, vortices, cloud);
+            } else {
+                cloud = Numeric::solve_RK4_fixed_vortices(dt, grid, cloud);
+            }
+            std::cout << "calc send" << std::endl;
+            //SEND CALCULATION RESULT
+            MPI_Send(cloud.data(), cloud.numberOfPoints(), MPI_BYTE, INTERFACE_RANK, CALCULATION_RESULT_TAG, global);
+            std::cout << "calc req" << std::endl;
+            //RECEIVE CALCULATION REQUEST
+            MPI_Recv( &dt, 1, MPI_DOUBLE, INTERFACE_RANK, CALCULATION_REQUEST_TAG, global, new MPI_Status() );
+            std::cout << "calc received " << dt << std::endl;
+        } while (dt > 0);
     }
+
+    MPI_Finalize();
     return EXIT_SUCCESS;
- }
+}
