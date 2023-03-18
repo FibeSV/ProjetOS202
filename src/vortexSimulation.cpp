@@ -186,8 +186,6 @@ int main( int nargs, char* argv[] )
                     if (sf::Keyboard::isKeyPressed(sf::Keyboard::Down)) dt /= 2;
                     if (sf::Keyboard::isKeyPressed(sf::Keyboard::Right)) advance = true;
                 }
-                if (!animate && !advance && myScreen.isOpen())
-                    std::this_thread::sleep_for(std::chrono::milliseconds(200));
             } while (!animate && !advance && myScreen.isOpen());
 
             std::cout << "int send" << std::endl;
