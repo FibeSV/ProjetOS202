@@ -155,16 +155,7 @@ int main( int nargs, char* argv[] )
             auto start = std::chrono::system_clock::now();
             bool advance = false;
 
-            myScreen.clear(sf::Color::Black);
-            std::string strDt = std::string("Time step : ") + std::to_string(dt);
-            myScreen.drawText(strDt, Geometry::Point<double>{50, double(myScreen.getGeometry().second-96)});
-            myScreen.displayVelocityField(grid, vortices);
-            myScreen.displayParticles(grid, vortices, cloud);
-            auto end = std::chrono::system_clock::now();
-            std::chrono::duration<double> diff = end - start;
-            std::string str_fps = std::string("FPS : ") + std::to_string(1./diff.count());
-            myScreen.drawText(str_fps, Geometry::Point<double>{300, double(myScreen.getGeometry().second-96)});
-            myScreen.display();
+
 
             sf::Event event;
             do {
@@ -194,6 +185,16 @@ int main( int nargs, char* argv[] )
             MPI_Recv(cloud.data(), cloud.numberOfPoints(), MPI_Point, CALCULATION_RANK, CALCULATION_RESULT_TAG, global, new MPI_Status());
             MPI_Recv(grid.data(), grid.cellGeometry().first*grid.cellGeometry().second, MPI_DOUBLE, CALCULATION_RANK, CALCULATION_RESULT_TAG+1, global, new MPI_Status());
             MPI_Recv(vortices.data(),  vortices.numberOfVortices()*3, MPI_DOUBLE, CALCULATION_RANK, CALCULATION_RESULT_TAG+2, global, new MPI_Status());
+            myScreen.clear(sf::Color::Black);
+            std::string strDt = std::string("Time step : ") + std::to_string(dt);
+            myScreen.drawText(strDt, Geometry::Point<double>{50, double(myScreen.getGeometry().second-96)});
+            myScreen.displayVelocityField(grid, vortices);
+            myScreen.displayParticles(grid, vortices, cloud);
+            auto end = std::chrono::system_clock::now();
+            std::chrono::duration<double> diff = end - start;
+            std::string str_fps = std::string("FPS : ") + std::to_string(1./diff.count());
+            myScreen.drawText(str_fps, Geometry::Point<double>{300, double(myScreen.getGeometry().second-96)});
+            myScreen.display();
         }
     }
     
