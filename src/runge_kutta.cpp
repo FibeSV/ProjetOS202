@@ -42,6 +42,17 @@ Numeric::solve_RK4_movable_vortices(double dt, CartesianGridOfSpeed &t_velocity,
     MPI_Comm_size(global, &nbp);
     MPI_Comm_rank(global, &rank);
     std::cout << "Comm size: " << nbp << "Current rank: " << rank << std::endl;
+    int np_cloud_cal = nbp - 2;                                              // the number of processes to calculate the cloud calculation
+    std::size_t devided_nm_p = t_points.numberOfPoints() / np_cloud_cal + 1; // the number of points to be calculated in a single process
+
+    MPI_Datatype MPI_Point;
+
+    int len[2] = {1, 1};
+    MPI_Aint pos[2] = {offsetof(Geometry::Point<double>, x), offsetof(Geometry::Point<double>, y)};
+    MPI_Datatype typ[2] = {MPI_DOUBLE, MPI_DOUBLE};
+
+    MPI_Type_create_struct(2, len, pos, typ, &MPI_Point);
+    MPI_Type_commit(&MPI_Point);
 
     constexpr double onesixth = 1. / 6.;
     using vector = Simulation::Vortices::vector;
@@ -53,7 +64,7 @@ Numeric::solve_RK4_movable_vortices(double dt, CartesianGridOfSpeed &t_velocity,
         std::vector<point> newVortexCenter;
         newVortexCenter.reserve(t_vortices.numberOfVortices());
 
-        start = std::chrono::system_clock::now();
+        auto start = std::chrono::system_clock::now();
 
         // Second loop
         // #pragma omp parallel for
@@ -73,8 +84,8 @@ Numeric::solve_RK4_movable_vortices(double dt, CartesianGridOfSpeed &t_velocity,
             newVortexCenter.emplace_back(t_velocity.updatePosition(p + onesixth * dt * (v1 + 2. * v2 + 2. * v3 + v4)));
         }
 
-        end = std::chrono::system_clock::now();
-        duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+        auto end = std::chrono::system_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
         // std::cout << "time spent in the 2nd loop: " << duration.count() << std::endl;
 
         // Third Loop
@@ -94,22 +105,45 @@ Numeric::solve_RK4_movable_vortices(double dt, CartesianGridOfSpeed &t_velocity,
     //---------------Merge the results and return----------------
     else if (rank == 1)
     {
+        // Collect the sub cloud data 
+        Geometry::CloudOfPoints *new_sub_clouds = new Geometry::CloudOfPoints[np_cloud_cal];
+        for (int i = 0; i < np_cloud_cal; i++)
+        {
+            new_sub_clouds[i] = Geometry::CloudOfPoints(std::min((i + 1) * devided_nm_p, t_points.numberOfPoints()) - i * devided_nm_p);
+            MPI_Recv(new_sub_clouds[i].data(), new_sub_clouds[i].numberOfPoints(), MPI_Point, i + 2, i + 2, global, new MPI_Status());
+        }
+
+        //Merge the sub clouds together
+        Geometry::CloudOfPoints newCloud;
+        std::vector<Point<double>> newCloud_temp;
+        newCloud_temp.reserve(t_points.numberOfPoints());
+        for (int i = 0; i < np_cloud_cal; i++)
+        {
+            newCloud_temp.insert(newCloud_temp.end(), new_sub_clouds[i].begin(), new_sub_clouds[i].end());
+        }
+
+        for (int i = 0; i < int(newCloud_temp.size()); i++)
+        {
+            newCloud.addAPoint(newCloud_temp[i]);
+        }
+        
         return newCloud;
     }
 
-    //---------------------Cloud Calculation-------=-------------
+    //---------------------Cloud Calculation---------------------
     else
     {
-        int np_cloud_cal = np - 2;
-        int devided_nm_p = t_points.numberofPoints() / np_cloud_cal;
-        Geometry::CloudOfPoints newCloud(t_points.numberOfPoints());
+
+        Geometry::CloudOfPoints new_sub_cloud(std::min((rank - 1) * devided_nm_p, t_points.numberOfPoints()) - (rank - 2) * devided_nm_p);
 
         // On ne bouge que les points :
         // First Loop
         auto start = std::chrono::system_clock::now();
 
-        #pragma omp parallel for
-        for (std::size_t iPoint = (rank-2) ; iPoint < t_points.numberOfPoints(); ++iPoint)
+#pragma omp parallel for
+        for (std::size_t iPoint = (rank - 2) * devided_nm_p;
+             iPoint < std::min((rank - 1) * devided_nm_p, t_points.numberOfPoints());
+             ++iPoint)
         {
             point p = t_points[iPoint];
             vector v1 = t_velocity.computeVelocityFor(p);
@@ -122,10 +156,13 @@ Numeric::solve_RK4_movable_vortices(double dt, CartesianGridOfSpeed &t_velocity,
             point p3 = p + dt * v3;
             p3 = t_velocity.updatePosition(p3);
             vector v4 = t_velocity.computeVelocityFor(p3);
-            newCloud[iPoint] = t_velocity.updatePosition(p + onesixth * dt * (v1 + 2. * v2 + 2. * v3 + v4));
+            new_sub_cloud[iPoint] = t_velocity.updatePosition(p + onesixth * dt * (v1 + 2. * v2 + 2. * v3 + v4));
         }
         auto end = std::chrono::system_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
         // std::cout << "time spent in the 1st loop: " << duration.count() << std::endl;
+        MPI_Send(new_sub_cloud.data(),
+                 std::min((rank - 1) * devided_nm_p, t_points.numberOfPoints()) - (rank - 2) * devided_nm_p,
+                 MPI_Point, 1, rank, global);
     }
 }

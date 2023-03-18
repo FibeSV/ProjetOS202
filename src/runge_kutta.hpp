@@ -2,6 +2,7 @@
 #define _NUMERIC_RUNGE_KUTTA_HPP_
 #include <utility>
 #include <chrono>
+#include <algorithm>
 #include <mpi.h>
 #include "vortex.hpp"
 #include "cloud_of_points.hpp"
