@@ -4,110 +4,128 @@
 using namespace Geometry;
 
 Geometry::CloudOfPoints
-Numeric::solve_RK4_fixed_vortices( double dt, CartesianGridOfSpeed const& t_velocity, Geometry::CloudOfPoints const& t_points )
+Numeric::solve_RK4_fixed_vortices(double dt, CartesianGridOfSpeed const &t_velocity, Geometry::CloudOfPoints const &t_points)
 {
-    constexpr double onesixth = 1./6.;
+    constexpr double onesixth = 1. / 6.;
     using vector = Simulation::Vortices::vector;
-    using point  = Simulation::Vortices::point;
+    using point = Simulation::Vortices::point;
 
     Geometry::CloudOfPoints newCloud(t_points.numberOfPoints());
     // On ne bouge que les points :
-    for ( std::size_t iPoint=0; iPoint<t_points.numberOfPoints(); ++iPoint)
+    for (std::size_t iPoint = 0; iPoint < t_points.numberOfPoints(); ++iPoint)
     {
-        point  p = t_points[iPoint];
+        point p = t_points[iPoint];
         vector v1 = t_velocity.computeVelocityFor(p);
-        point p1 = p + 0.5*dt*v1;
+        point p1 = p + 0.5 * dt * v1;
         p1 = t_velocity.updatePosition(p1);
         vector v2 = t_velocity.computeVelocityFor(p1);
-        point p2 = p + 0.5*dt*v2;
+        point p2 = p + 0.5 * dt * v2;
         p2 = t_velocity.updatePosition(p2);
         vector v3 = t_velocity.computeVelocityFor(p2);
-        point p3 = p + dt*v3;
+        point p3 = p + dt * v3;
         p3 = t_velocity.updatePosition(p3);
         vector v4 = t_velocity.computeVelocityFor(p3);
-        newCloud[iPoint] = t_velocity.updatePosition(p + onesixth*dt*(v1+2.*v2+2.*v3+v4));
+        newCloud[iPoint] = t_velocity.updatePosition(p + onesixth * dt * (v1 + 2. * v2 + 2. * v3 + v4));
     }
     return newCloud;
 }
 
 Geometry::CloudOfPoints
-Numeric::solve_RK4_movable_vortices( double dt, CartesianGridOfSpeed& t_velocity, 
-                                     Simulation::Vortices& t_vortices, 
-                                     Geometry::CloudOfPoints const& t_points )
+Numeric::solve_RK4_movable_vortices(double dt, CartesianGridOfSpeed &t_velocity,
+                                    Simulation::Vortices &t_vortices,
+                                    Geometry::CloudOfPoints const &t_points)
 {
-    constexpr double onesixth = 1./6.;
+    MPI_Comm global;
+    int rank, nbp;
+
+    MPI_Comm_dup(MPI_COMM_WORLD, &global);
+    MPI_Comm_size(global, &nbp);
+    MPI_Comm_rank(global, &rank);
+    std::cout << "Comm size: " << nbp << "Current rank: " << rank << std::endl;
+
+    constexpr double onesixth = 1. / 6.;
     using vector = Simulation::Vortices::vector;
-    using point  = Simulation::Vortices::point;
+    using point = Simulation::Vortices::point;
 
-    Geometry::CloudOfPoints newCloud(t_points.numberOfPoints());
-    // On ne bouge que les points :
-
-    //---------------First Loop----------------
-    auto start = std::chrono::system_clock::now();
-
-    #pragma omp parallel for 
-    for ( std::size_t iPoint=0; iPoint<t_points.numberOfPoints(); ++iPoint)
+    //---------------Vortex Center Calculation-------------------
+    if (rank == 0)
     {
-        point  p = t_points[iPoint];
-        vector v1 = t_velocity.computeVelocityFor(p);
-        point p1 = p + 0.5*dt*v1;
-        p1 = t_velocity.updatePosition(p1);
-        vector v2 = t_velocity.computeVelocityFor(p1);
-        point p2 = p + 0.5*dt*v2;
-        p2 = t_velocity.updatePosition(p2);
-        vector v3 = t_velocity.computeVelocityFor(p2);
-        point p3 = p + dt*v3;
-        p3 = t_velocity.updatePosition(p3);
-        vector v4 = t_velocity.computeVelocityFor(p3);
-        newCloud[iPoint] = t_velocity.updatePosition(p + onesixth*dt*(v1+2.*v2+2.*v3+v4));
-    }
-    auto end = std::chrono::system_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-    //std::cout << "time spent in the 1st loop: " << duration.count() << std::endl;
+        std::vector<point> newVortexCenter;
+        newVortexCenter.reserve(t_vortices.numberOfVortices());
 
-    //---------------Second Loop----------------
-    std::vector<point> newVortexCenter;
-    newVortexCenter.reserve(t_vortices.numberOfVortices());
+        start = std::chrono::system_clock::now();
 
-    start = std::chrono::system_clock::now();
+        // Second loop
+        // #pragma omp parallel for
+        for (std::size_t iVortex = 0; iVortex < t_vortices.numberOfVortices(); ++iVortex)
+        {
+            point p = t_vortices.getCenter(iVortex);
+            vector v1 = t_vortices.computeSpeed(p);
+            point p1 = p + 0.5 * dt * v1;
+            p1 = t_velocity.updatePosition(p1);
+            vector v2 = t_vortices.computeSpeed(p1);
+            point p2 = p + 0.5 * dt * v2;
+            p2 = t_velocity.updatePosition(p2);
+            vector v3 = t_vortices.computeSpeed(p2);
+            point p3 = p + dt * v3;
+            p3 = t_velocity.updatePosition(p3);
+            vector v4 = t_vortices.computeSpeed(p3);
+            newVortexCenter.emplace_back(t_velocity.updatePosition(p + onesixth * dt * (v1 + 2. * v2 + 2. * v3 + v4)));
+        }
 
-    //#pragma omp parallel for 
-    for (std::size_t iVortex=0; iVortex<t_vortices.numberOfVortices(); ++iVortex)
-    {
-        point p = t_vortices.getCenter(iVortex);
-        vector v1 = t_vortices.computeSpeed(p);
-        point p1 = p + 0.5*dt*v1;
-        p1 = t_velocity.updatePosition(p1);
-        vector v2 = t_vortices.computeSpeed(p1);
-        point p2 = p + 0.5*dt*v2;
-        p2 = t_velocity.updatePosition(p2);
-        vector v3 = t_vortices.computeSpeed(p2);
-        point p3 = p + dt*v3;
-        p3 = t_velocity.updatePosition(p3);
-        vector v4 = t_vortices.computeSpeed(p3);
-        newVortexCenter.emplace_back(t_velocity.updatePosition(p + onesixth*dt*(v1+2.*v2+2.*v3+v4)));
+        end = std::chrono::system_clock::now();
+        duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+        // std::cout << "time spent in the 2nd loop: " << duration.count() << std::endl;
+
+        // Third Loop
+        start = std::chrono::system_clock::now();
+
+        // #pragma omp parallel for
+        for (std::size_t iVortex = 0; iVortex < t_vortices.numberOfVortices(); ++iVortex)
+            t_vortices.setVortex(iVortex, newVortexCenter[iVortex], t_vortices.getIntensity(iVortex));
+
+        end = std::chrono::system_clock::now();
+        duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+        // std::cout << "time spent in the 3rd loop: " << duration.count() << std::endl << std::endl;
+
+        t_velocity.updateVelocityField(t_vortices);
     }
 
-    end = std::chrono::system_clock::now();
-    duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-    //std::cout << "time spent in the 2nd loop: " << duration.count() << std::endl;
-    
-    //---------------Third Loop----------------
-
-    start = std::chrono::system_clock::now();
-
-    //#pragma omp parallel for
-    for (std::size_t iVortex=0; iVortex<t_vortices.numberOfVortices(); ++iVortex)
+    //---------------Merge the results and return----------------
+    else if (rank == 1)
     {
-        t_vortices.setVortex(iVortex, newVortexCenter[iVortex], 
-                             t_vortices.getIntensity(iVortex));
+        return newCloud;
     }
 
-    end = std::chrono::system_clock::now();
-    duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-    //std::cout << "time spent in the 3rd loop: " << duration.count() << std::endl << std::endl;
+    //---------------------Cloud Calculation-------=-------------
+    else
+    {
+        int np_cloud_cal = np - 2;
+        int devided_nm_p = t_points.numberofPoints() / np_cloud_cal;
+        Geometry::CloudOfPoints newCloud(t_points.numberOfPoints());
 
-    t_velocity.updateVelocityField(t_vortices);
-    return newCloud;
+        // On ne bouge que les points :
+        // First Loop
+        auto start = std::chrono::system_clock::now();
 
+        #pragma omp parallel for
+        for (std::size_t iPoint = (rank-2) ; iPoint < t_points.numberOfPoints(); ++iPoint)
+        {
+            point p = t_points[iPoint];
+            vector v1 = t_velocity.computeVelocityFor(p);
+            point p1 = p + 0.5 * dt * v1;
+            p1 = t_velocity.updatePosition(p1);
+            vector v2 = t_velocity.computeVelocityFor(p1);
+            point p2 = p + 0.5 * dt * v2;
+            p2 = t_velocity.updatePosition(p2);
+            vector v3 = t_velocity.computeVelocityFor(p2);
+            point p3 = p + dt * v3;
+            p3 = t_velocity.updatePosition(p3);
+            vector v4 = t_velocity.computeVelocityFor(p3);
+            newCloud[iPoint] = t_velocity.updatePosition(p + onesixth * dt * (v1 + 2. * v2 + 2. * v3 + v4));
+        }
+        auto end = std::chrono::system_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+        // std::cout << "time spent in the 1st loop: " << duration.count() << std::endl;
+    }
 }

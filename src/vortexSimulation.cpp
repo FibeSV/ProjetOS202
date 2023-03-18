@@ -89,6 +89,14 @@ auto readConfigFile( std::ifstream& input )
 
 int main( int nargs, char* argv[] )
 {
+    MPI_Comm global;
+    int rank, nbp;
+
+    MPI_Init(&nargs, &argv);
+    MPI_Comm_dup(MPI_COMM_WORLD, &global);
+    MPI_Comm_size(global, &nbp);
+    MPI_Comm_rank(global, &rank);
+
     char const* filename;
     if (nargs==1)
     {
@@ -170,9 +178,10 @@ int main( int nargs, char* argv[] )
         std::string str_fps = std::string("FPS : ") + std::to_string(1./diff.count());
         myScreen.drawText(str_fps, Geometry::Point<double>{300, double(myScreen.getGeometry().second-96)});
         myScreen.display();
-        
-        
+                
     }
 
+    MPI_Finalize();
+    
     return EXIT_SUCCESS;
  }
