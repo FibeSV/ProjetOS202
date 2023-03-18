@@ -52,7 +52,7 @@ namespace Geometry
         const_iterator end() const { return m_setOfPoints.cend(); }
         const_iterator cend() const { return m_setOfPoints.cend(); }
 
-        std::size_t numberOfPoints() const { return m_setOfPoints.size(); }
+        std::size_t numberOfPoints()  const  { return m_setOfPoints.size(); }
 
         double const* data() const 
         {
