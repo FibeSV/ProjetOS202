@@ -140,7 +140,6 @@ int main( int nargs, char* argv[] )
     grid.updateVelocityField(vortices);
 
     double dt = 0.1;
-
     if (rank == INTERFACE_RANK){
         std::cout << "######## Vortex simultor ########" << std::endl << std::endl;
         std::cout << "Press P for play animation " << std::endl;
@@ -193,6 +192,8 @@ int main( int nargs, char* argv[] )
 
             //RECEIVE CALCULATION RESULT
             MPI_Recv(cloud.data(), cloud.numberOfPoints(), MPI_Point, CALCULATION_RANK, CALCULATION_RESULT_TAG, global, new MPI_Status());
+            MPI_Recv(grid.data(), grid.cellGeometry().first*grid.cellGeometry().second, MPI_DOUBLE, CALCULATION_RANK, CALCULATION_RESULT_TAG+1, global, new MPI_Status());
+            MPI_Recv(vortices.data(),  vortices.numberOfVortices()*3, MPI_DOUBLE, CALCULATION_RANK, CALCULATION_RESULT_TAG+2, global, new MPI_Status());
         }
     }
     
@@ -204,7 +205,10 @@ int main( int nargs, char* argv[] )
                 cloud = Numeric::solve_RK4_fixed_vortices(dt, grid, cloud);
             }
             //SEND CALCULATION RESULT
+
             MPI_Send(cloud.data(), cloud.numberOfPoints(), MPI_Point, INTERFACE_RANK, CALCULATION_RESULT_TAG, global);
+            MPI_Send(grid.data(),  grid.cellGeometry().first*grid.cellGeometry().second, MPI_DOUBLE, INTERFACE_RANK, CALCULATION_RESULT_TAG+1, global);
+            MPI_Send(vortices.data(),  vortices.numberOfVortices()*3, MPI_DOUBLE, INTERFACE_RANK, CALCULATION_RESULT_TAG+2, global);
             //RECEIVE CALCULATION REQUEST
             MPI_Recv( &dt, 1, MPI_DOUBLE, INTERFACE_RANK, CALCULATION_REQUEST_TAG, global, new MPI_Status() );
         } while (dt > 0);

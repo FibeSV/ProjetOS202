@@ -22,6 +22,9 @@ namespace Simulation
         Vortices( Vortices     && ) = default;
         ~Vortices()                 = default;
 
+        double* data() { return (double*)m_centers_and_intensities.data(); }
+        double const* data() const { return (double const*)m_centers_and_intensities.data(); }
+
         std::size_t numberOfVortices() const 
         {
             return m_centers_and_intensities.size()/3;
